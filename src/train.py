@@ -5,21 +5,18 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import time
 import os
 import copy
-from sklearn.metrics import confusion_matrix
 import visdom
+import argparse
 
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs,
                 dataloader, device, dataset_sizes, output_path):
-    model = init_model(model)
+    # model = init_model(model)
     model.to(device)
-    model.to
     vis = visdom.Visdom()
     #     vis.close()
     loss_curve = {'train': [], 'val': []}
@@ -33,7 +30,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs,
     best_acc = 0.0
 
     for epoch in range(num_epochs):
-        if (epoch % 5 == 0) or (epoch == num_epochs):
+        # show acc every x epochs
+        if (epoch % 1 == 0) or (epoch == num_epochs):
             print('\tEpoch {}/{}'.format(epoch, num_epochs - 1))
             print('\t' + '-' * 10)
 
@@ -77,7 +75,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs,
             loss_curve[phase].append(epoch_loss)
             acc[phase].append(epoch_acc.cpu().numpy())
 
-            if (epoch % 5 == 0) or (epoch == num_epochs):
+            if (epoch % 1 == 0) or (epoch == num_epochs):
                 print('\t{} Loss: {:.4f} Acc: {:.4f}'.format(
                     phase, epoch_loss, epoch_acc))
 
@@ -123,6 +121,37 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs,
 
     return model, stats
 
+
+def init_model(model):
+    # model = models.alexnet(pretrained=True)
+    # model.classifier[6] = nn.Linear(4096, 2)
+
+    # # print(list(list(model.classifier.children())[1].parameters()))
+    # mod = list(model.classifier.children())
+    # mod.pop()
+    # mod.append(torch.nn.Linear(4096, 2))
+    # new_classifier = torch.nn.Sequential(*mod)
+    # # print(list(list(new_classifier.children())[1].parameters()))
+    # model.classifier = new_classifier
+    # # m.classifier
+
+    model = models.resnet18(progress=True, pretrained=True)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 2)
+    #     torch.nn.init.xavier_uniform(model.fc.weight)
+
+    count = 0
+    for layer, child in model.named_children():
+        count += 1
+        #         print(layer)
+        for name, param in child.named_parameters():
+            if count < 5:
+                param.requires_grad = False
+            else:
+                #                 param.requires_grad = True
+                pass
+                #                 print("\t",name)
+    return model
 
 def visualize_model(model, dataloader, device, output_path, num_images=8):
     was_training = model.training
@@ -181,3 +210,32 @@ def visualize_model(model, dataloader, device, output_path, num_images=8):
             if i == 2:
                 return
         model.train(mode=was_training)
+
+
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Train model.')
+
+    parser.add_argument('--lr', metavar='--learning_rate', type=float, default=1e-4,
+                        help='leraning rate')
+    parser.add_argument('--batch_size', metavar='--batch_size', type=int, default=8,
+                        help='batch size')
+    parser.add_argument('--epoch', metavar='--epoch', type=int, default=100,
+                        help='trainng epochs')
+    parser.add_argument('--reg', metavar='--regularization', type=float, default=0,
+                        help='L2 regularizaiton rate')
+    parser.add_argument('--step_size', metavar='--step_size', type=int, default=10000,
+                        help='learning rate decay step size')
+    parser.add_argument('--gamma', metavar='--gamma', type=float, default=1,
+                        help='learning rate decay rate')
+    parser.add_argument('--dropout', metavar='--dropout', type=int, default=0,
+                        help='dropout rate')
+    parser.add_argument('--weight', metavar='--weight', type=float, default=1,
+                        help='weight for loss')
+
+    args = parser.parse_args()
+    return args
+
+
+
