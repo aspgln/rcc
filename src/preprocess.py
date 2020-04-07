@@ -377,6 +377,21 @@ def write_nrrd(im_PATH, output_PATH, UIDs, df):
 #     #         print()
 #     return labels
 
+def pt_copy(src, dest):
+    '''
+    src: source folder data/pt_000
+    des: destination folder train/
+    '''
+    try:
+        os.makedirs(dest)
+    except FileExistsError: 
+#         print('Directory exists.')     
+        pass
+    for index, x in enumerate(os.scandir(src)):
+        shutil.copy(x.path,dest)
+
+
+
 
 def organize_by_class(src, des, labelNames):
     """

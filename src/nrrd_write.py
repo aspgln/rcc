@@ -296,6 +296,9 @@ def print_info(df):
         print('\t\tindex: {}, '.format(index))
         print('\t\tSOPID: {}, tumor size: {}, '.format(row['SOPInstanceUID'], row['size']))
         print('\t\tpatient name: {}, acc #: {}'.format(row['Anon Patient Name'], row['unique_acc']))    
+        print('\t\trecord id: {}'.format(row['record_id']))    
+
+
     return 
     
     
