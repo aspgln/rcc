@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import json
+import h5py
+import os
+import pydicom
 from pandas.io.json import json_normalize
 
 
@@ -325,22 +328,110 @@ select image and hdf5 processing
 
 def check_phase(labelId):
     if labelId == 'L_e7D5Yl' or labelId == 'L_PJR807':
-        phase = 0 # non-contract phase
+        phase = 'noncon' # non-contract phase
     elif labelId == 'L_y7KqAJ' or labelId == 'L_e7kVd1':
-        phase = 1 # arterial phase
+        phase = 'arterial' # arterial phase
     elif labelId ==  'L_q1Mrp7' or labelId == 'L_4lgMO1':
-        phase =2 # portal venous phase
+        phase = 'portal' # portal venous phase
     elif labelId == 'L_gljGOJ' or labelId =='L_47EP91':
-        phase = 3 # delayed phase
+        phase = 'delayed' # delayed phase
     else:
         print('UNKNOWN PHASE!!!')
     return phase
     
-
     
-# def create_data_sstruct()
+    
+    
+def print_hdf_names(path):
+    def print_names(name):
+        print(name)
+    with h5py.File(path, 'r', track_order=True) as f:
+        f.visit(print_names)   
+        
+    
+def add_group_attrs(group, df):
+        group.attrs['pathology'] = df['pathology'].drop_duplicates().squeeze()
+        group.attrs['grade'] =  df['grade'].drop_duplicates().squeeze()
+        group.attrs['Anon Patient Name'] =  df['Anon Patient Name'].drop_duplicates().squeeze()
+        group.attrs['Anon MRN'] =  df['Anon MRN'].drop_duplicates().squeeze()
+
+        
+def HU_rescale(im, slope, intercept):
+    """
+    Convert store value to HU value
+    Linear correlation:
+        Output Value = SV * RescaleSlope + RescaleIntercept
+    """
+    return im * slope + intercept
 
 
+def get_fixed_bb(im, x, y, height, width, size=128):
+    
+    xc = x + width/2
+    yc = y + height/2
+    
+    x0 = np.rint(xc-size/2).astype(int)
+    x1 = np.rint(xc+size/2).astype(int)
+    y0 = np.rint(yc-size/2).astype(int)
+    y1 = np.rint(yc+size/2).astype(int)
+    
+    im2 = im[y0:y1, x0:x1]
+    return im2        
+        
+        
+def create_h5_object(input_path, path, data, df_this_patient):
+    # create an hdf5 object for each patient
+    
+    # initialize a hdf5 object
+    with h5py.File(path, mode='w', track_order=True) as f:
+        for ph in ['noncon', 'arterial', 'portal', 'delayed']:
+            group = f.create_group(ph)
+            add_group_attrs(group, df_this_patient)
+            
+            dset = group.create_dataset('data', (128,128,0), maxshape=(128,128,None), dtype='f')
+    
+    # add data 
+    with h5py.File(path, mode='a', track_order=True) as f:
+        for index, (_, row) in enumerate(df_this_patient.iterrows()):
+            phase = check_phase(row['labelId'])
+#             print('phase = ', phase)
+            input_slice_path = os.path.join(input_path, row['StudyInstanceUID'], 
+                                   row['SeriesInstanceUID'], row['SOPInstanceUID']+'.dcm')
+            
+            if os.path.exists(input_slice_path) == False:
+                raise FileExistsError
+            else:
+                pass
+            
+
+            # read data pydicom
+            ds = pydicom.dcmread(input_slice_path)
+            im = ds.pixel_array
+            im = HU_rescale(im, ds.RescaleSlope, ds.RescaleIntercept)
+            
+            height = row['data.height']
+            width = row['data.width']
+            x = row['data.x']
+            y = row['data.y']
+
+
+            im_crop = get_fixed_bb(im, x, y, height, width, size=128)
+            data = f['{}/data'.format(phase)]
+            data.resize((128,128,data.shape[2]+1))
+            data[:,:,-1] = im_crop
+
+            
+    with h5py.File(path, mode='r', track_order=True) as f:
+        
+        for p in ['noncon', 'arterial', 'portal', 'delayed']:
+            dset = f['{}/data'.format(p)]
+            print('\t', p, dset.shape)
+    
+    
+    return 
+        
+    
+            
 
 
 
