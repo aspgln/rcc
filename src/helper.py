@@ -12,69 +12,6 @@ from pandas.io.json import json_normalize
 
 
 
-
-def show_batch(sample_batched):
-    """show image with label for a batch of samples"""
-    image_batch, lable_batch = sample_batched[0], sample_batched[1]
-
-    batch_size = len(image_batch)
-    im_size = image_batch.size(2)
-
-    col = 4
-    row = int((batch_size) / col)
-
-    fig, ax = plt.subplots(nrows=row, ncols=col)
-    for i in range(row):
-        for j in range(col):
-            print('batch no ', i*4+j)
-            #             im = ax[i,j].imshow(image_batch[i*4+j, 1, :, :], cmap=plt.cm.bone, vmin = -360, vmax = 440)
-
-            if row > 1:
-                # show RGB
-                im = ax[i, j].imshow((np.transpose(image_batch[i * 4 + j, :, :, :])+2)/4)
-
-
-                ax[i, j].axis('off')
-                ax[i, j].set_title(lable_batch[i * 4 + j].numpy())
-            if row == 1:
-                im = ax[j].imshow((np.transpose(image_batch[i * 4 + j, :, :, :])+2)/4)
-                ax[j].axis('off')
-                ax[j].set_title(lable_batch[i * 4 + j].numpy())
-    cb_ax = fig.add_axes([0.96, 0.1, 0.02, 0.8])
-    cbar = fig.colorbar(im, cax=cb_ax)
-    # cbar = fig.colorbar(im)
-
-    plt.show()
-    return
-
-
-def show_batch2(sample_batched, vmin=-360, vmax=440):
-    """show image with label for a batch of samples"""
-    image_batch, lable_batch = sample_batched[0], sample_batched[1]
-    batch_size = len(image_batch)
-    im_size = image_batch.size(2)
-
-    col = 4
-    row = int((batch_size) / col)
-    # fig,ax = plt.subplots(nrows=row)
-    for i in range (row):
-        fig, ax = plt.subplots()
-
-        im1 = image_batch[i*4+0, 0, :, :]
-        im2 = image_batch[i*4+1, 0, :, :]
-        im3 = image_batch[i*4+2, 0, :, :]
-        im4 = image_batch[i*4+3, 0, :, :]
-
-        im_batch = np.hstack((im1,im2,im3,im4))
-        im = ax.imshow(im_batch, cmap=plt.cm.bone, vmin=vmin, vmax=vmax)
-
-        cb_ax = fig.add_axes([0.96, 0.1, 0.02, 0.5])
-        cbar = fig.colorbar(im, cax=cb_ax)
-        # cbar = fig.colorbar(im)
-        plt.show()
-    # plt.show()
-    return
-
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -140,7 +77,10 @@ def load_log(PATH1, PATH2):
 
     data_log = pd.merge(data1, data2, how='inner', on=['Orig Study UID', 'Orig Acc #', 'Image Req. Status'])
     data_log = data_log[data_log['Image Req. Status']=='TRANSFERRED'] 
-
+    
+    data_log = data_log[['Orig Patient Name', 'Anon Patient Name', 'Orig MRN', 'Anon MRN', 'Orig Acc #', 'Anon Acc #', 'Orig Study UID', 'Anon Study UID_x']]
+    data_log = data_log.rename(columns={'Orig MRN':'MRN_log','Anon MRN':'Anon MRN_log', 'Orig Acc #':'Acc_log', 'Anon Acc #':'Anon Acc_log', 
+                                       'Orig Study UID':'Orig StudyUID_log',  'Anon Study UID_x':'Anon StudyUID_log'})
     return data_log
 
 
@@ -183,21 +123,24 @@ def load_redcap(PATH):
     data_clinical = pd.read_csv(PATH)                             
     # data_clinical = data[['accession', 'biopsy_type', 'tumor_type','pathology', 'grade']]
     # drop empty record
-    data_clinical = data_clinical.dropna(subset=['accession'])
-    
-    # create new df to seperate fields with 2 acc #
-    new_df = data_clinical[['record_id', 'accession']]
-    new_df = pd.DataFrame(new_df.accession.str.split(',').tolist(), index=new_df.record_id).stack()
-    new_df = new_df.reset_index([0,'record_id'])
-    new_df.columns = ['record_id', 'unique_acc']
-    # drop acc# 11568327 for duplicate
-    new_df = new_df.drop_duplicates(subset=['unique_acc'])
+    data_clinical = data_clinical.dropna(subset=['mrn'])
+    data_clinical = data_clinical[['record_id', 'mrn', 'accession', 'size', 'pathology', 'grade']]
 
-    data_clinical = pd.merge(data_clinical, new_df, left_on=['record_id'], 
-                          right_on=['record_id'])
-    data_clinical = data_clinical.drop(['accession'], axis=1)
-    data_clinical['unique_acc'] = pd.to_numeric(data_clinical['unique_acc'])
     
+#     # create new df to seperate fields with 2 acc #
+#     new_df = data_clinical[['record_id', 'accession']]
+#     new_df = pd.DataFrame(new_df.accession.str.split(',').tolist(), index=new_df.record_id).stack()
+#     new_df = new_df.reset_index([0,'record_id'])
+#     new_df.columns = ['record_id', 'unique_acc']
+#     # drop acc# 11568327 for duplicate
+#     new_df = new_df.drop_duplicates(subset=['unique_acc'])
+
+#     data_clinical = pd.merge(data_clinical, new_df, left_on=['record_id'], 
+#                           right_on=['record_id'])
+#     data_clinical = data_clinical.drop(['accession'], axis=1)
+#     data_clinical['accession'] = pd.to_numeric(data_clinical['accession'])
+
+
     return data_clinical
 
 
