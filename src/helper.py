@@ -90,7 +90,7 @@ def load_json(PATH):
     with open(PATH) as f:
         js = json.load(f)
     json_data = json_normalize(js['datasets'][0]['annotations'])
-    json_data = json_data[['labelId','StudyInstanceUID','SeriesInstanceUID', 'SOPInstanceUID', 'data.vertices','data.height','data.width', 'data.x', 'data.y', 'height', 'width']]
+    json_data = json_data[['labelId','StudyInstanceUID','SeriesInstanceUID', 'SOPInstanceUID','data.height','data.width', 'data.x', 'data.y', 'height', 'width']]
     BBId =['L_y7KqAJ', # R_arterial
     'L_e7kVd1' , # L_arterial
     'L_4lgMO1' , # R_pv
@@ -403,7 +403,7 @@ def display_hdf5(path):
                     axes.set_title('slice: {}'.format(slice_num))
                     fig.suptitle(p, fontsize=16, y=0.95)
                     fig.tight_layout()
-                    fig.subplots_adjust(top = 0.8, bottom=0.1)
+                    fig.subplots_adjust(top = 0.7, bottom=0.1)
             elif num > 1:
                 list_to_display = np.linspace(0, num-1, 10)
                 fig, axes = plt.subplots(ncols=10, nrows=1, figsize=(20,2), sharex=True, sharey=True)
