@@ -249,9 +249,9 @@ def show_number_of_lesions(dataframe, pathology_type):
     df = dataframe[dataframe['pathology']== pathology_type]
     print(pathology_type)
     print('Number of patients : ', np.unique(df['Anon Patient Name']).shape)
-    print('Number of studies : ', np.unique(df['unique_acc']).shape)
+    print('Number of studies : ', np.unique(df['accession']).shape)
 
-    patientStats = df[['unique_acc', 'grade', 'pathology', 'size']].drop_duplicates()
+    patientStats = df[['accession', 'grade', 'pathology', 'size']].drop_duplicates()
 
 
     df_lesions = patientStats['size']
@@ -291,13 +291,6 @@ def print_hdf_names(path):
     with h5py.File(path, 'r', track_order=True) as f:
         f.visit(print_names)   
         
-    
-def add_group_attrs(group, df):
-        group.attrs['pathology'] = df['pathology'].drop_duplicates().squeeze()
-        group.attrs['grade'] =  df['grade'].drop_duplicates().squeeze()
-        group.attrs['Anon Patient Name'] =  df['Anon Patient Name'].drop_duplicates().squeeze()
-        group.attrs['Anon MRN'] =  df['Anon MRN'].drop_duplicates().squeeze()
-
         
 def HU_rescale(im, slope, intercept):
     """
@@ -309,7 +302,6 @@ def HU_rescale(im, slope, intercept):
 
 
 def get_fixed_bb(im, x, y, height, width, size=128):
-    
     xc = x + width/2
     yc = y + height/2
     
@@ -321,59 +313,113 @@ def get_fixed_bb(im, x, y, height, width, size=128):
     im2 = im[y0:y1, x0:x1]
     return im2        
         
+
+
         
-def create_h5_object(input_path, path, data, df_this_patient):
-    # create an hdf5 object for each patient
+def get_cropped_img(slice_path, row):
+    '''
+    get the cropped bounding box
+    @slice_path: studyUID/seriesUID/sopUID
+    @row: one row of df in an iteration
+    '''
+    if os.path.exists(slice_path) == False:
+        print('DICOM does not exist, check UIDs.')
+        raise FileExistsError
+    else:
+        pass
     
+    # read data pydicom
+    ds = pydicom.dcmread(slice_path)
+    im = ds.pixel_array
+    im = HU_rescale(im, ds.RescaleSlope, ds.RescaleIntercept)
+
+    height = row['data.height']
+    width = row['data.width']
+    x = row['data.x']
+    y = row['data.y']
+    im_crop = get_fixed_bb(im, x, y, height, width, size=128)
+    return im_crop
+    
+    
+def add_group_attrs(group, df):
+    attrs_list = ['MRN', 'Pathology', 'grade', 'Tumor Type', 'Index', 'record_id']
+    for attr in attrs_list:
+        group.attrs[attr] =  df[attr].drop_duplicates().squeeze()
+           
+            
+def create_h5_object(input_path, path, df_this_patient):
+    # create an hdf5 object for each patient
     # initialize a hdf5 object
     with h5py.File(path, mode='w', track_order=True) as f:
         for ph in ['noncon', 'arterial', 'portal', 'delayed']:
             group = f.create_group(ph)
             add_group_attrs(group, df_this_patient)
-            
-            dset = group.create_dataset('data', (128,128,0), maxshape=(128,128,None), dtype='f')
+            size = 128
+            dset = group.create_dataset('data', (size,size,0), maxshape=(size,size,None), dtype='f')
     
-    # add data 
+    # add a dataset "data" to group phase. ex. arterial/data
     with h5py.File(path, mode='a', track_order=True) as f:
         for index, (_, row) in enumerate(df_this_patient.iterrows()):
             phase = check_phase(row['labelId'])
-#             print('phase = ', phase)
             input_slice_path = os.path.join(input_path, row['StudyInstanceUID'], 
                                    row['SeriesInstanceUID'], row['SOPInstanceUID']+'.dcm')
             
-            if os.path.exists(input_slice_path) == False:
-                raise FileExistsError
-            else:
-                pass
-            
-
-            # read data pydicom
-            ds = pydicom.dcmread(input_slice_path)
-            im = ds.pixel_array
-            im = HU_rescale(im, ds.RescaleSlope, ds.RescaleIntercept)
-            
-            height = row['data.height']
-            width = row['data.width']
-            x = row['data.x']
-            y = row['data.y']
-
-
-            im_crop = get_fixed_bb(im, x, y, height, width, size=128)
+            im_crop = get_cropped_img(input_slice_path, row)
             data = f['{}/data'.format(phase)]
-            data.resize((128,128,data.shape[2]+1))
+            data.resize((size,size,data.shape[2]+1))
             data[:,:,-1] = im_crop
 
-            
-    with h5py.File(path, mode='r', track_order=True) as f:
-        
-        for p in ['noncon', 'arterial', 'portal', 'delayed']:
-            dset = f['{}/data'.format(p)]
-            print('\t', p, dset.shape)
-    
-    
+#     with h5py.File(path, mode='r', track_order=True) as f:
+#         for p in ['noncon', 'arterial', 'portal', 'delayed']:
+#             dset = f['{}/data'.format(p)]
+#             print('\t', p, dset.shape)
+
     return 
         
-    
+
+def display_hdf5(path):
+    '''
+    show hdf5 file by phase
+    input: path
+    '''
+    with h5py.File(path, mode='r', track_order=True) as f:
+        for p in ['noncon', 'arterial', 'portal', 'delayed']:
+            dset = f['{}/data'.format(p)]
+            print(p, dset.shape)
+
+            dset =f['{}/data'.format(p)]
+        #     im = dset[:,:,0]
+            num = dset.shape[2]
+            if num == 0:
+                pass
+            elif num == 1:
+                list_to_display = np.linspace(0, num-1, num)
+                fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(2,2), sharex=True, sharey=True)
+                for index, i in enumerate(list_to_display):
+                    slice_num = int(i)
+            #         print(type(slice_num))
+                    im = dset[:,:,slice_num]
+                    axes.imshow(im, vmin=-360, vmax=440, cmap=plt.cm.bone)
+                    axes.set_title('slice: {}'.format(slice_num))
+                    fig.suptitle(p, fontsize=16, y=0.95)
+                    fig.tight_layout()
+                    fig.subplots_adjust(top = 0.8, bottom=0.1)
+            elif num > 1:
+                list_to_display = np.linspace(0, num-1, 10)
+                fig, axes = plt.subplots(ncols=10, nrows=1, figsize=(20,2), sharex=True, sharey=True)
+                for index, i in enumerate(list_to_display):
+                    slice_num = int(i)
+            #         print(type(slice_num))
+                    im = dset[:,:,slice_num]
+
+                    axes[index].imshow(im, vmin=-360, vmax=440, cmap=plt.cm.bone)
+                    axes[index].set_title('slice: {}'.format(slice_num))
+                    fig.suptitle(p, fontsize=16, y=0.90)
+                    fig.tight_layout()
+                    fig.subplots_adjust(top = 0.7, bottom=0.1)
+
+
+
             
 
 
