@@ -284,13 +284,7 @@ def check_phase(labelId):
     
     
     
-    
-def print_hdf_names(path):
-    def print_names(name):
-        print(name)
-    with h5py.File(path, 'r', track_order=True) as f:
-        f.visit(print_names)   
-        
+
         
 def HU_rescale(im, slope, intercept):
     """
@@ -369,12 +363,24 @@ def create_h5_object(input_path, path, df_this_patient):
             data.resize((size,size,data.shape[2]+1))
             data[:,:,-1] = im_crop
 
-#     with h5py.File(path, mode='r', track_order=True) as f:
-#         for p in ['noncon', 'arterial', 'portal', 'delayed']:
-#             dset = f['{}/data'.format(p)]
-#             print('\t', p, dset.shape)
-
     return 
+
+
+
+def read_h5_object(path):
+    with h5py.File(path, mode='r', track_order=True) as f:
+        for p in ['noncon', 'arterial', 'portal', 'delayed']:
+            dset = f['{}/data'.format(p)]
+            print('\t', p, dset.shape[2])
+
+            
+            
+def print_hdf_names(path):
+    def print_names(name):
+        print(name)
+    with h5py.File(path, 'r', track_order=True) as f:
+        f.visit(print_names)   
+        
         
 
 def display_hdf5(path):
@@ -419,9 +425,35 @@ def display_hdf5(path):
                     fig.subplots_adjust(top = 0.7, bottom=0.1)
 
 
+                    
+def drop_invalid_index(pt_index, input_path):
+    '''
+    Drop invalid cases
+    @pt_index: an index or multi-index pandas object 
+        example: data_merge.index
+    @input_path: directory of hdf files
+    '''
+    
 
+    # DROP annotation on noncon or delayed phases
+    for file in os.scandir(input_path):
+
+        with h5py.File(file.path, mode='r', track_order=True) as f:
+            slice_max = 0
+            phase_max = ''
+            for p in ['noncon', 'arterial', 'portal', 'delayed']:
+                dset = f['{}/data'.format(p)]
+
+                if dset.shape[2]>slice_max:
+                    slice_max = dset.shape[2]
+                    phase_max = p
+            if phase_max != 'arterial' and phase_max != 'portal':
+                print('DROPPED: {}, {} at {}'.format(file.name, slice_max, phase_max))
+                ind = int(file.name.split('.')[0][2:5])
+                # delete this index from list
+                pt_index = pt_index[pt_index!=ind]
             
-
+    return pt_index
 
 
 
