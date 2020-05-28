@@ -429,16 +429,21 @@ def display_hdf5(path):
 def drop_invalid_index(pt_index, input_path):
     '''
     Drop invalid cases
-    @pt_index: an index or multi-index pandas object 
-        example: data_merge.index
+    @pt_index: a list-like object, including python list [], numpy array, a single or multi-index pandas object 
+        example: array([1,2,3,4,5])
+        example: df.index
+        
     @input_path: directory of hdf files
+    
+    @ouput: same type of pt_index
     '''
     
-
     # DROP annotation on noncon or delayed phases
-    for file in os.scandir(input_path):
-
-        with h5py.File(file.path, mode='r', track_order=True) as f:
+    print('before shape = {}'.format(pt_index.shape))
+    
+    for index in pt_index: 
+        file_path = os.path.join(input_path, 'pt{}.hdf5'.format(str(index).zfill(3)))
+        with h5py.File(file_path, mode='r', track_order=True) as f:
             slice_max = 0
             phase_max = ''
             for p in ['noncon', 'arterial', 'portal', 'delayed']:
@@ -448,11 +453,11 @@ def drop_invalid_index(pt_index, input_path):
                     slice_max = dset.shape[2]
                     phase_max = p
             if phase_max != 'arterial' and phase_max != 'portal':
-                print('DROPPED: {}, {} at {}'.format(file.name, slice_max, phase_max))
-                ind = int(file.name.split('.')[0][2:5])
+                print('\tDROPPED: {}, {} at {}'.format('pt{}.hdf5'.format(str(index).zfill(3)), slice_max, phase_max))
                 # delete this index from list
-                pt_index = pt_index[pt_index!=ind]
-            
+                pt_index = pt_index[pt_index!=index]
+    print('after shape = {}'.format(pt_index.shape))
+    print()
     return pt_index
 
 
