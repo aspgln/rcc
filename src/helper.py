@@ -9,7 +9,7 @@ import h5py
 import os
 import pydicom
 from pandas.io.json import json_normalize
-
+import shutil
 
 
 def count_parameters(model):
@@ -461,7 +461,30 @@ def drop_invalid_index(pt_index, input_path):
     return pt_index
 
 
+def create_h5_one_phase(index_list, input_path, output_path):
+#    '''
+#    Find the correct phase, either arterial/portal, and save as new hdf5 file
+#    @index_list: a list-list object, such as pd.Series or list
+#    '''
+    for i in index_list:
+        in_ = os.path.join(input_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
+        shutil.copy(in_, output_path)
+        out_ = os.path.join(output_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
 
+        with h5py.File(out_, mode='a', track_order=True) as f:
+            del f['noncon']
+            del f['delayed']
+
+            dset_arterial = f['arterial/data']
+            dset_portal = f['portal/data']
+
+            if dset_arterial.shape[2] > dset_portal.shape[2]:
+                del f['portal']
+            elif dset_arterial.shape[2] < dset_portal.shape[2]:
+                del f['arterial']
+            elif arterial_len == portal_len:
+                print('EQUAL with ', arterial_len, ', check index', i)
+    print('finished.')
 
 
 
