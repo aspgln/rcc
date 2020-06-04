@@ -365,6 +365,10 @@ def create_h5_object(input_path, path, df_this_patient, dim=128):
 
         # create each dicom header as an individual dset
         (max_label, phase, n_max) = find_max_phase(df_this_patient)
+        group_single.attrs['max_label'] = max_label
+        group_single.attrs['phase'] = phase
+        group_single.attrs['n_max'] = n_max
+        
         dicom_names = ['StudyInstanceUID','SeriesInstanceUID',  'SOPInstanceUID','InstanceNumber','WindowCenter', 'WindowWidth','RescaleIntercept', 'RescaleSlope','PatientID','PatientName']
         dt = h5py.string_dtype(encoding='utf-8')        
         for x in dicom_names:
@@ -436,12 +440,53 @@ def print_hdf_names(path):
         print(name)
     with h5py.File(path, 'r', track_order=True) as f:
         f.visit(print_names)   
+
+def display_hdf5_single_phase(path):
+    '''
+    show hdf5 file for single phase
+    input: path
+    '''
+    with h5py.File(path, mode='r', track_order=True) as f:
+        dset = f['single_phase/data']
+        print('shape:', dset.shape)
+        phase = f['single_phase'].attrs['phase']
         
+    #     im = dset[:,:,0]
+        num = dset.shape[2]
+        if num == 0:
+            pass
+        elif num == 1:
+            list_to_display = np.linspace(0, num-1, num)
+            fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(2,2), sharex=True, sharey=True)
+            for index, i in enumerate(list_to_display):
+                slice_num = int(i)
+        #         print(type(slice_num))
+                im = dset[:,:,slice_num]
+                axes.imshow(im, vmin=-360, vmax=440, cmap=plt.cm.bone)
+                axes.set_title('slice: {}'.format(slice_num))
+                fig.suptitle(p, fontsize=16, y=0.95)
+                fig.tight_layout()
+                fig.subplots_adjust(top = 0.7, bottom=0.1)
+        elif num > 1:
+            list_to_display = np.linspace(0, num-1, 10)
+            fig, axes = plt.subplots(ncols=10, nrows=1, figsize=(20,2), sharex=True, sharey=True)
+            for index, i in enumerate(list_to_display):
+                slice_num = int(i)
+        #         print(type(slice_num))
+                im = dset[:,:,slice_num]
+
+                axes[index].imshow(im, vmin=-360, vmax=440, cmap=plt.cm.bone)
+                axes[index].set_title('slice: {}'.format(slice_num))
+                fig.suptitle(phase, fontsize=16, y=0.90)
+                fig.tight_layout()
+                fig.subplots_adjust(top = 0.7, bottom=0.1)
+
+
         
 
 def display_hdf5(path):
     '''
-    show hdf5 file by phase
+    show hdf5 file for multi-phase
     input: path
     '''
     with h5py.File(path, mode='r', track_order=True) as f:
