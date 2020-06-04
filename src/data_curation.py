@@ -10,7 +10,7 @@ import os
 import pydicom
 from pandas.io.json import json_normalize
 import shutil
-
+import sys
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -327,7 +327,10 @@ def find_max_phase(df):
     max_label = this_series.keys()[0]
     n_max = this_series.values[0]
     phase = check_phase(max_label)
-    if this_series.values[1] > 1:
+#     print(this_series)
+    try: 
+        pass
+    except this_series.values[1] > 1:
         print('Second common case is greater than 1!')
         return
     return (max_label, phase, n_max)
@@ -354,23 +357,19 @@ def create_h5_object(input_path, path, df_this_patient, dim=128):
     # create an hdf5 object for each patient
     # initialization
     with h5py.File(path, mode='w', track_order=True) as f:
-        # create single phase dset
+        # create single phase image dset
         group_single = f.create_group('single_phase')
         dset = group_single.create_dataset('data', (dim,dim,0), maxshape=(dim,dim,None), dtype='f')
         # add series level attributes
-        add_attrs(dset, df_this_patient)
+        add_attrs(group_single, df_this_patient)
 
-        # create metadata as dset
+        # create each dicom header as an individual dset
         (max_label, phase, n_max) = find_max_phase(df_this_patient)
-        print(type(n_max))
-        metadata_list = ['StudyInstanceUID','SeriesInstanceUID',  'SOPInstanceUID','InstanceNumber','WindowCenter', 'WindowWidth','RescaleIntercept', 'RescaleSlope','PatientID','PatientName']
+        dicom_names = ['StudyInstanceUID','SeriesInstanceUID',  'SOPInstanceUID','InstanceNumber','WindowCenter', 'WindowWidth','RescaleIntercept', 'RescaleSlope','PatientID','PatientName']
         dt = h5py.string_dtype(encoding='utf-8')        
-        for x in metadata_list:
-            group_single.create_dataset(x, (int(n_max),), dtype=dt) 
+        for x in dicom_names:
+            group_single.create_dataset(x, (n_max,), dtype=dt) 
             
-
-#         dset2 = group_single.create_dataset('data', (dim,dim,0), maxshape=(dim,dim,None), dtype='f')
-
         
 #         # create multi-phase dset
 #         group_multi = f.create_group('multi_phase')
@@ -391,38 +390,34 @@ def create_h5_object(input_path, path, df_this_patient, dim=128):
                 pass
             
             # read data pydicom
+#             if index == 0:
+#                 print(row['pt_index'])
             ds = pydicom.dcmread(input_slice_path)
             im = ds.pixel_array
             im = HU_rescale(im, ds.RescaleSlope, ds.RescaleIntercept)
             im_crop = crop_image(im, row)
-               
-
-#             print(f['single_phase/data'].attrs)
+            
             data = f['single_phase/data']
             data.resize((dim,dim,data.shape[2]+1))
             data[:,:,-1] = im_crop
-            
 
-            for x in metadata_list: 
-#                 tag= f['single_phase/InstanceNumber']
-                tag = f['single_phase/{}'.format(x)]
-                tag[index] = ds.data_element(x).value
-              
-#             f['single_phase/data'].attrs['SeriesInstanceUID'].append(ds.SeriesInstanceUID)
-#             f['single_phase/data'].attrs['SOPInstanceUID'].append(ds.SOPInstanceUID)
-#             f['single_phase/data'].attrs['InstanceNumber'].append(ds.InstanceNumber)
-#             f['single_phase/data'].attrs['WindowCenter'].append(ds.WindowCenter)
-#             f['single_phase/data'].attrs['WindowWidth'].append(ds.WindowWidth)
-#             f['single_phase/data'].attrs['RescaleIntercept'].append(ds.RescaleIntercept)
-#             f['single_phase/data'].attrs['RescaleSlope'].append(ds.RescaleSlope)
-#             f['single_phase/data'].attrs['PatientID'].append(ds.PatientID)
-#             f['single_phase/data'].attrs['PatientName'].append(ds.PatientName)
-
+#             if index == 10:
+#                 print('here')
+    
+            for name in dicom_names: 
+                try: 
+                    dicom_name_dset = f['single_phase/{}'.format(name)]
+                    if type(ds.data_element(name).value) ==  pydicom.multival.MultiValue:
+                        if index == 0:
+                            print('\tAt pt_{}, {} is a MultiValue = {}, take {}'.format(row['pt_index'], name, ds.data_element(name).value, ds.data_element(name).value[0]))
+                        dicom_name_dset[index] = ds.data_element(name).value[0]
+                    else: 
+                        dicom_name_dset[index] = ds.data_element(name).value
+                except KeyError:
+                    print('\tAt pt_{}, {} key ks not found!!'.format(row['pt_index'], name))
+                    continue
 #         for key, value in f['single_phase/data'].attrs.items():
 #             print(key, value)
-        print(data.shape)
-        print()
-
 
     return 
 
