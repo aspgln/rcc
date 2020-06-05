@@ -529,7 +529,7 @@ def display_hdf5(path):
 def drop_invalid_index(pt_index, input_path):
     '''
     Drop invalid cases
-    @pt_index: a list-like object, including python list [], numpy array, a single or multi-index pandas object 
+    @pt_index: a list-like object contains pt_index. Valid formats include python list [], numpy array, a single or multi-index pandas object 
         example: array([1,2,3,4,5])
         example: df.index
         
@@ -545,15 +545,19 @@ def drop_invalid_index(pt_index, input_path):
         file_path = os.path.join(input_path, 'pt{}.hdf5'.format(str(index).zfill(3)))
         with h5py.File(file_path, mode='r', track_order=True) as f:
             slice_max = 0
-            phase_max = ''
-            for p in ['noncon', 'arterial', 'portal', 'delayed']:
-                dset = f['{}/data'.format(p)]
+            
+            phase = f['single_phase'].attrs['phase']
+            
+#             for multi-phase dset
+#             for p in ['noncon', 'arterial', 'portal', 'delayed']:
+#                 dset = f['{}/data'.format(p)]
 
-                if dset.shape[2]>slice_max:
-                    slice_max = dset.shape[2]
-                    phase_max = p
-            if phase_max != 'arterial' and phase_max != 'portal':
-                print('\tDROPPED: {}, {} at {}'.format('pt{}.hdf5'.format(str(index).zfill(3)), slice_max, phase_max))
+#                 if dset.shape[2]>slice_max:
+#                     slice_max = dset.shape[2]
+#                     phase_max = p
+
+            if phase != 'arterial' and phase != 'portal':
+                print('\tDROPPED: {}, has {}'.format('pt{}.hdf5'.format(str(index).zfill(3)), phase))
                 # delete this index from list
                 pt_index = pt_index[pt_index!=index]
     print('after shape = {}'.format(pt_index.shape))
@@ -561,30 +565,57 @@ def drop_invalid_index(pt_index, input_path):
     return pt_index
 
 
-def create_h5_one_phase(index_list, input_path, output_path):
-#    '''
-#    Find the correct phase, either arterial/portal, and save as new hdf5 file
-#    @index_list: a list-list object, such as pd.Series or list
-#    '''
-    for i in index_list:
-        in_ = os.path.join(input_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
-        shutil.copy(in_, output_path)
-        out_ = os.path.join(output_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
+def create_labels(root_dir):
+    '''
+    Create (pt_index, label) pairs. This is used for dataloader.
+    Train/val/test folder under root_dir
+    Will create train/val/test.csv under the root_dir
+    '''
+    
+    for mode in ['train', 'val', 'test']:
+        # labels is a list of tuple, storing (pt_index, label)
+        labels = []
+        for i, pt in enumerate(os.scandir(os.path.join(root_dir, mode))):
+            with h5py.File(pt.path, mode='r', track_order=True) as f:
+                grade = f['single_phase'].attrs['grade']
+                if grade == 1 or grade == 2 or grade == 6:
+                    label = 0
+                elif grade == 3 or grade == 4 or grade ==5:
+                    label = 1
+#                 print(pt.name.split('.')[0], label, grade)
+                labels.append((pt.name.split('.')[0], label))
 
-        with h5py.File(out_, mode='a', track_order=True) as f:
-            del f['noncon']
-            del f['delayed']
+        idx, values = zip(*labels)
+        s = pd.Series(values, idx)
+        s.to_csv(os.path.join(root_dir, '{}.csv'.format(mode)), header=False)
 
-            dset_arterial = f['arterial/data']
-            dset_portal = f['portal/data']
 
-            if dset_arterial.shape[2] > dset_portal.shape[2]:
-                del f['portal']
-            elif dset_arterial.shape[2] < dset_portal.shape[2]:
-                del f['arterial']
-            elif arterial_len == portal_len:
-                print('EQUAL with ', arterial_len, ', check index', i)
-    print('finished.')
+
+
+# def create_h5_one_phase(index_list, input_path, output_path):
+# #    '''
+# #    Find the correct phase, either arterial/portal, and save as new hdf5 file
+# #    @index_list: a list-list object, such as pd.Series or list
+# #    '''
+#     for i in index_list:
+#         in_ = os.path.join(input_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
+#         shutil.copy(in_, output_path)
+#         out_ = os.path.join(output_path, 'pt{}.hdf5'.format(str(i).zfill(3)))    
+
+#         with h5py.File(out_, mode='a', track_order=True) as f:
+#             del f['noncon']
+#             del f['delayed']
+
+#             dset_arterial = f['arterial/data']
+#             dset_portal = f['portal/data']
+
+#             if dset_arterial.shape[2] > dset_portal.shape[2]:
+#                 del f['portal']
+#             elif dset_arterial.shape[2] < dset_portal.shape[2]:
+#                 del f['arterial']
+#             elif arterial_len == portal_len:
+#                 print('EQUAL with ', arterial_len, ', check index', i)
+#     print('finished.')
 
 
 
