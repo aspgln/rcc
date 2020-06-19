@@ -199,7 +199,9 @@ def show_grade_distribution(df, pathology_type):
     return 
 
 
-
+def df_difference(df1, df2):
+    df3 = pd.concat([df1,df2]).drop_duplicates(keep=False)
+    return df3
 
 def show_pathology_stats(dataframe, pathology_type):
     df_pathology  = dataframe[dataframe['pathology']== pathology_type]
@@ -217,7 +219,6 @@ def show_pathology_stats(dataframe, pathology_type):
     df = df.drop_duplicates(subset=['StudyInstanceUID'])
     print()
 
- 
 
     # df_multi: studies where multiple tumors on records (filtered by size)
     # df_duplicated: studies where 2 StudyInsatnceUID correponeds to 1 Patient Name
@@ -261,6 +262,48 @@ def show_number_of_lesions(dataframe, pathology_type):
     print('Number of lesions: {}'.format(len(l_list)))
 
 
+    
+def read_metadata():
+    path1 =  './metadata/sage_all.csv'
+    path2 = './metadata/kirti_all.csv'
+    data_log = load_log(path1, path2)
+
+    data_clinical = load_redcap('./metadata/RedCap.csv')
+
+    data_annotation = load_json('./metadata/mdai.json')
+
+
+    merge_1 = pd.merge(data_log, data_clinical, left_on='MRN_log', 
+                       right_on='mrn')
+    # merge between StudyInstanceUID(md.ai) and AIR(from sage)
+    merge_2 = pd.merge(data_annotation, merge_1, left_on='StudyInstanceUID', 
+                       right_on='Anon StudyUID_log')
+    merge_2 = merge_2[['mrn','MRN_log','Anon MRN_log','record_id', 'accession', 'Acc_log', 'Anon Acc_log','Orig Patient Name', 'Anon Patient Name', 
+                       'pathology', 'grade','size',
+                       'Orig StudyUID_log','Anon StudyUID_log','StudyInstanceUID', 'SeriesInstanceUID', 'SOPInstanceUID',
+                       'height', 'width', 'labelId',  'data.height', 'data.width', 'data.x', 'data.y', 'laterality', 'stacked']]
+
+    # merge with data excluded cysts
+    data_exclude_cysts = pd.read_csv('./metadata/all_patients/excluded_cyctic.csv')
+    # data_exclude_cysts
+    data_exclude_cysts.index.name='pt_index'
+    data_exclude_cysts = data_exclude_cysts.reset_index()
+
+
+    data_merge = pd.merge( data_exclude_cysts,merge_2, how='inner', left_on='MRN', right_on='mrn')
+
+    print('Number of studies downloaed from AIR: ', data_log.shape)
+    print('Number of studies annoated on MD.ai: ', np.unique(data_annotation['SeriesInstanceUID']).shape)
+    print('Number of studies on Redcap : ', data_clinical.shape)
+    print('Number of studies from merge AIR and Redcap : ', merge_1.shape) 
+    print('Number of studies from merge AIR, Redcap and MD.ai : ', np.unique(merge_2['accession']).shape)
+    print('Number of studies from exclude_cysts : ', np.unique(data_merge['accession']).shape)
+    print('Number of patients : ', np.unique(data_merge['Anon Patient Name']).shape)
+
+
+    return data_merge
+
+    
 
 
 '''
@@ -575,7 +618,7 @@ def create_labels(root_dir):
     for mode in ['train', 'val', 'test']:
         # labels is a list of tuple, storing (pt_index, label)
         labels = []
-        for i, pt in enumerate(os.scandir(os.path.join(root_dir, mode))):
+        for pt in os.scandir(os.path.join(root_dir, mode)):
             with h5py.File(pt.path, mode='r', track_order=True) as f:
                 grade = f['single_phase'].attrs['grade']
                 if grade == 1 or grade == 2 or grade == 6:
