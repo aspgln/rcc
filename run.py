@@ -37,24 +37,9 @@ import src.model
 
 
 def run(args):
-    
-    
-    
-# task='abnormal'
-# plane='sagittal'
-# augment=1
-# lr_scheduler='step'
-# gamma=0.8
-# epochs=20
-# lr=1e-4
-# flush_history=0
-# save_model=1
-# patience=5
-# log_every=100
-# prefix_name='test'
-    
+    print('HERE', torch.cuda.is_available())
     device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
-
+    print(f'device = {device}')
 
     augmentor =  transforms.Compose([
         transforms.Lambda(lambda x: torch.Tensor(x)),
@@ -64,8 +49,8 @@ def run(args):
         src.dataloader.Crop(90), 
 #         src.dataloader.RandomCenterCrop(90), 
 
-        src.dataloader.RandomHorizontalFlip(), 
-        src.dataloader.RandomRotate(25), 
+#         src.dataloader.RandomHorizontalFlip(), 
+#         src.dataloader.RandomRotate(25), 
         src.dataloader.Resize(256), 
     ])
     
@@ -74,36 +59,38 @@ def run(args):
         src.dataloader.Rescale(-160, 240), # rset dynamic range
         transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
 #         src.dataloader.Normalize(), 
-        src.dataloader.Crop(90), 
+#         src.dataloader.Crop(90), 
         src.dataloader.Resize(256), 
     ])
     
     
     if args.task == 1:
         print('Task 1: clear cell grade prediction')
-        path = '/data/larson2/RCC_dl/7.3D_clearcell/'
+        path = '/data/larson2/RCC_dl/new/clear_cell/'
     
-        train_ds = src.dataloader.RCCDataset3D(path, mode='train', transform=augmentor)
-        train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=16, drop_last=False)
+        train_ds = src.dataloader.RCCDataset_h5(path, mode='train', transform=augmentor)
+        train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=1, drop_last=False)
 
-        val_ds = src.dataloader.RCCDataset3D(path, mode='test', transform=augmentor2)
-        val_loader = DataLoader(val_ds, batch_size=1, shuffle=True, num_workers=4, drop_last=False)
-        
+        val_ds = src.dataloader.RCCDataset_h5(path, mode='val', transform=augmentor2)
+        val_loader = DataLoader(val_ds, batch_size=1, shuffle=True, num_workers=1, drop_last=False)
+        print(f'train size: {len(train_loader)}')
+        print(f'val size: {len(val_loader)}')
+
+
         pos_weight = args.weight
-    
-    elif args.task == 2:
-        print('Task 2: differentiate between oncocytoma vs papilary RCC')
+    else:
+        print('invalid task')
+#     elif args.task == 2:
+#         print('Task 2: differentiate between oncocytoma vs papilary RCC')
         
-        path = '/data/larson2/RCC_dl/7.3D_onc_papillary/'
+#         path = '/data/larson2/RCC_dl/7.3D_onc_papillary/'
 
-        train_ds = src.dataloader.RCCDataset3DTest(path, mode='train', transform=augmentor)
-        train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=16, drop_last=False)
+#         train_ds = src.dataloader.RCCDataset3DTest(path, mode='train', transform=augmentor)
+#         train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=16, drop_last=False)
 
-        val_ds = src.dataloader.RCCDataset3DTest(path, mode='val', transform=augmentor2)
-        val_loader = DataLoader(val_ds, batch_size=1, shuffle=True, num_workers=4, drop_last=False)
-        pos_weight = args.weight
-
-
+#         val_ds = src.dataloader.RCCDataset3DTest(path, mode='val', transform=augmentor2)
+#         val_loader = DataLoader(val_ds, batch_size=1, shuffle=True, num_workers=4, drop_last=False)
+#         pos_weight = args.weight
 
 
 
@@ -113,22 +100,9 @@ def run(args):
     print('Min = ', train_ds[1][0].min())
     print('Max = ', train_ds[1][0].max())
     print('Input size', train_ds[0][0].shape)
-    
 
-#     task='abnormal'
-#     plane='sagittal'
-#     augment=1
-#     lr_scheduler='plateau'
-#     gamma=0.5
-#     epochs=20
-#     lr=1e-5
-#     flush_history=0
-#     save_model=1
-#     patience=5
-#     log_every=100
-#     prefix_name='test'
 
-    log_root_folder = "./logs/"
+    log_root_folder = "/data/larson2/RCC_dl/logs/"
 #         if args.flush_history == 1:
 #         objects = os.listdir(log_root_folder)
 #         for f in objects:
@@ -191,15 +165,33 @@ def run(args):
         iteration_change_loss += 1
         print('-' * 30)
 
+        model_root_dir = "/data/larson2/RCC_dl/models/"
+
+
         if val_auc > best_val_auc and epoch > 5:
             best_val_auc = val_auc
             if bool(args.save_model):
                 file_name = f'model_{args.task}_{args.prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}.pth'
-#                 for f in os.listdir('/working/larson/qdai/RCC/repo/models/'):
-#                     if (args.task in f) :
-#                         os.remove(f'/working/larson/qdai/RCC/repo/models/{f}')
-                torch.save(model, f'/working/larson/qdai/RCC/repo/models/{file_name}')
+                for f in os.listdir(model_root_dir):
+                    if  (args.prefix_name in f):
+                        os.remove(os.path.join(model_root_dir, f))
+                torch.save(model, os.path.join(model_root_dir, file_name))
 
+
+    
+#         if val_auc > best_val_auc:
+#                 best_val_auc = val_auc
+#                 if bool(save_model):
+#                     file_name = f'model_{prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}.pth'
+#                     for f in os.listdir(model_root_dir):
+#                         if  (prefix_name in f):
+#                             os.remove(os.path.join(model_root_dir, f))
+#                     torch.save(model, os.path.join(model_root_dir, file_name))
+
+
+    
+    
+    
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             iteration_change_loss = 0
@@ -213,7 +205,6 @@ def run(args):
     t_end_training = time.time()
     print(f'training took {t_end_training - t_start_training} s')
     #     --------------------
-   
 
 
 
@@ -234,11 +225,9 @@ def run(args):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--gpu', type=str, default='0')
+    parser.add_argument('--gpu', type=str, default=None)
     parser.add_argument('--prefix_name', type=str, required=True)
     parser.add_argument('--task', type=int, required=True)
-
-
 
 #     parser.add_argument('--augment', type=int, choices=[0, 1], default=1)
     parser.add_argument('--lr_scheduler', type=str,
