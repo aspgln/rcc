@@ -525,7 +525,50 @@ def display_hdf5_single_phase(path):
                 fig.subplots_adjust(top = 0.7, bottom=0.1)
 
 
-        
+                
+def create_h5(input_path, output_path, df):
+    '''
+    A wrapper function for converting DICOM to hdf5
+    @input_path: DICOM location
+    @output_path: hdf5 location
+    @df: data_merge
+    '''
+    
+    # set index to mrn
+    mrn_list = df['MRN'].drop_duplicates().tolist()
+    total = len(mrn_list)
+
+    dup_list = []
+    for i, mrn in enumerate(mrn_list):
+        print(i)
+
+        df_this_patient = df[df['MRN']==mrn]
+
+        pt_index = 'pt' + str(df_this_patient['pt_index'].iloc[0]).zfill(3)
+        pt_path = os.path.join(output_path, pt_index+'.hdf5')
+
+
+#         this block is to find duplicate patients
+#         if df_this_patient['size'].drop_duplicates().values[0].__len__() > 3 and df_this_patient['Pathology'].drop_duplicates().values[0] == 'clear cell':
+#             dup_list.append(df_this_patient['pt_index'].iloc[0])
+#     #         break
+#     #         print()
+#             print(pt_index)
+#             return
+
+
+        this = create_h5_object(input_path, pt_path, df_this_patient )
+    #     if i > 19:
+    #         break
+    #     j = i / total
+    #     sys.stdout.write("\r[%-20s] %d/%d" % ('='*int(20*j), i, total))
+    #     sys.stdout.flush()
+    #     break
+        print('-'*30)
+
+    return
+    
+    
 
 def display_hdf5(path):
     '''
