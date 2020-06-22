@@ -7,6 +7,8 @@ from torch.optim import lr_scheduler
 import numpy as np
 import torchvision
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, RandomSampler
+import mrnet.torchsample.transforms
+
 from torchvision import datasets, models, transforms, utils
 import time
 import os  
@@ -29,6 +31,9 @@ import argparse
 warnings.filterwarnings("ignore")
 
 
+import mrnet.mrnet_dataloader
+import mrnet.mrnet_train
+import mrnet.mrnet_model
 
 import src.dataloader 
 import src.train3d
@@ -37,37 +42,59 @@ import src.model
 
 
 def run(args):
-    print('HERE', torch.cuda.is_available())
     device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
-    print(f'device = {device}')
+    print('Cuda available:', torch.cuda.is_available(), f'device = {device}')
 
-    augmentor =  transforms.Compose([
-        transforms.Lambda(lambda x: torch.Tensor(x)),
-        src.dataloader.Rescale(-160, 240), # rset dynamic range
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
-#         src.dataloader.Normalize(), 
-        src.dataloader.Crop(90), 
-#         src.dataloader.RandomCenterCrop(90), 
+    
+    
+    
+    if args.task == 0:
+        print('Task 0: MR Dataset Prediction')
+        augmentor = transforms.Compose([
+            transforms.Lambda(lambda x: torch.Tensor(x)),
+            mrnet.torchsample.transforms.RandomRotate(25),
+            mrnet.torchsample.transforms.RandomTranslate([0.11, 0.11]),
+            mrnet.torchsample.transforms.RandomFlip(),
+            transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(1, 0, 2, 3)),
+        ])
+        job = 'acl'
+        plane = 'sagittal'
+        train_ds = mrnet.mrnet_dataloader.MRDataset('/data/larson2/RCC_dl/MRNet-v1.0/data/', job,
+                                  plane, transform=augmentor, train=True)
+        train_loader = torch.utils.data.DataLoader(
+            train_ds, batch_size=1, shuffle=True, num_workers=11, drop_last=False)
 
-#         src.dataloader.RandomHorizontalFlip(), 
-#         src.dataloader.RandomRotate(25), 
-        src.dataloader.Resize(256), 
-    ])
-    
-    augmentor2 =  transforms.Compose([
-        transforms.Lambda(lambda x: torch.Tensor(x)),
-        src.dataloader.Rescale(-160, 240), # rset dynamic range
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
-#         src.dataloader.Normalize(), 
-#         src.dataloader.Crop(90), 
-        src.dataloader.Resize(256), 
-    ])
-    
-    
-    if args.task == 1:
+        val_ds = mrnet.mrnet_dataloader.MRDataset(
+            '/data/larson2/RCC_dl/MRNet-v1.0/data/', job, plane, train=False)
+        val_loader = torch.utils.data.DataLoader(
+            val_ds, batch_size=1, shuffle=-True, num_workers=11, drop_last=False)
+        
+    elif args.task == 1:
         print('Task 1: clear cell grade prediction')
         path = '/data/larson2/RCC_dl/new/clear_cell/'
     
+        augmentor =  transforms.Compose([
+            transforms.Lambda(lambda x: torch.Tensor(x)),
+            src.dataloader.Rescale(-160, 240), # rset dynamic range
+            transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
+    #         src.dataloader.Normalize(),
+            src.dataloader.Crop(90),
+    #         src.dataloader.RandomCenterCrop(90),
+
+    #         src.dataloader.RandomHorizontalFlip(),
+    #         src.dataloader.RandomRotate(25),
+            src.dataloader.Resize(256),
+        ])
+
+        augmentor2 =  transforms.Compose([
+            transforms.Lambda(lambda x: torch.Tensor(x)),
+            src.dataloader.Rescale(-160, 240), # rset dynamic range
+            transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
+    #         src.dataloader.Normalize(),
+    #         src.dataloader.Crop(90),
+            src.dataloader.Resize(256),
+        ])
+        
         train_ds = src.dataloader.RCCDataset_h5(path, mode='train', transform=augmentor)
         train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=1, drop_last=False)
 
@@ -76,30 +103,17 @@ def run(args):
         print(f'train size: {len(train_loader)}')
         print(f'val size: {len(val_loader)}')
 
-
         pos_weight = args.weight
-    else:
-        print('invalid task')
-#     elif args.task == 2:
-#         print('Task 2: differentiate between oncocytoma vs papilary RCC')
-        
-#         path = '/data/larson2/RCC_dl/7.3D_onc_papillary/'
-
-#         train_ds = src.dataloader.RCCDataset3DTest(path, mode='train', transform=augmentor)
-#         train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=16, drop_last=False)
-
-#         val_ds = src.dataloader.RCCDataset3DTest(path, mode='val', transform=augmentor2)
-#         val_loader = DataLoader(val_ds, batch_size=1, shuffle=True, num_workers=4, drop_last=False)
-#         pos_weight = args.weight
 
 
 
-    
-    print('Path = ', path)
-    print('Datatype = ', train_ds[1][0].dtype)
-    print('Min = ', train_ds[1][0].min())
-    print('Max = ', train_ds[1][0].max())
-    print('Input size', train_ds[0][0].shape)
+    print('Summary: ')
+    print(f'\ttrain size: {len(train_loader)}')
+    print(f'\tval size: {len(val_loader)}')
+    print('\tDatatype = ', train_ds[1][0].dtype)
+    print('\tMin = ', train_ds[1][0].min())
+    print('\tMax = ', train_ds[1][0].max())
+    print('\tInput size', train_ds[0][0].shape)
 
 
     log_root_folder = "/data/larson2/RCC_dl/logs/"
@@ -111,10 +125,10 @@ def run(args):
 
 
     now = datetime.now()
-#     logdir = log_root_folder + "test"
-    logdir = os.path.join(log_root_folder , args.prefix_name+now.strftime("%Y%m%d-%H%M%S") + "/")
+    now = now.strftime("%Y%m%d-%H%M%S")
+    logdir = os.path.join(log_root_folder , f"task_{args.task}_{args.prefix_name}_{now}")
     os.makedirs(logdir)
-    
+    print(f'logdir = {logdir}')
     
     writer = SummaryWriter(logdir)
 
@@ -171,7 +185,7 @@ def run(args):
         if val_auc > best_val_auc and epoch > 5:
             best_val_auc = val_auc
             if bool(args.save_model):
-                file_name = f'model_{args.task}_{args.prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}.pth'
+                file_name = f'model_{args.task}_{args.prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}_lr_{args.lr}_gamma_{args.gamma}_lrsche_{args.lr_scheduler}_weight_{args.weight}.pth'
                 for f in os.listdir(model_root_dir):
                     if  (args.prefix_name in f):
                         os.remove(os.path.join(model_root_dir, f))
@@ -227,7 +241,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, default=None)
     parser.add_argument('--prefix_name', type=str, required=True)
-    parser.add_argument('--task', type=int, required=True)
+    parser.add_argument('--task', type=int, required=True) # 0->mrnet, 1->clear cell
 
 #     parser.add_argument('--augment', type=int, choices=[0, 1], default=1)
     parser.add_argument('--lr_scheduler', type=str,
@@ -240,8 +254,6 @@ def parse_arguments():
     parser.add_argument('--patience', type=int, default=5)
     parser.add_argument('--log_every', type=int, default=25)
     parser.add_argument('--weight', type=float, default=1)
-
-
 
     args = parser.parse_args()
     return args
