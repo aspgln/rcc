@@ -13,7 +13,7 @@ class MRNet(nn.Module):
         super().__init__()
         self.pretrained_model = models.alexnet(pretrained=True)
         self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout2d(p=0.5)
+#         self.dropout = nn.Dropout2d(p=0.5)
         self.classifier = nn.Linear(256, 2)
     
     def forward(self, x):
@@ -25,6 +25,79 @@ class MRNet(nn.Module):
         output = self.classifier(flattened_features)
         return output
 
+
+class MRNet2(nn.Module):
+    '''
+    Modified classifier
+    @input: s x 3 x 256 x 256
+    @output: 1 x 2
+    '''
+    def __init__(self):
+        super().__init__()
+        self.pretrained_model = models.alexnet(pretrained=True)
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.classifier = nn.Sequential(
+            nn.Dropout(p=0.5),
+            nn.Linear(256, 100),
+            nn.ReLU(inplace=True),
+            nn.Linear(100, 2),
+        )    
+    def forward(self, x):
+        x = torch.squeeze(x, dim=0) 
+        features = self.pretrained_model.features(x)
+        pooled_features = self.pooling_layer(features)
+        pooled_features = pooled_features.view(pooled_features.size(0), -1)
+        flattened_features = torch.max(pooled_features, 0, keepdim=True)[0]
+        output = self.classifier(flattened_features)
+        return output
+
+
+    
+class MRNetBN(nn.Module):
+    '''
+    MRNet with batch normalization
+    @input: s x 3 x 256 x 256
+    @output: 1 x 2
+    '''
+    def __init__(self):
+        super().__init__()
+        self.pretrained_model = models.alexnet(pretrained=True)
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.dropout = nn.Dropout2d(p=0.5)
+        self.classifier = nn.Linear(256, 2)
+    
+    def forward(self, x):
+        x = torch.squeeze(x, dim=0) 
+        features = self.pretrained_model.features(x)
+        pooled_features = self.pooling_layer(features)
+        pooled_features = pooled_features.view(pooled_features.size(0), -1)
+        flattened_features = torch.max(pooled_features, 0, keepdim=True)[0]
+        output = self.classifier(flattened_features)
+        return output
+       
+        
+class MRResNet(nn.Module):
+    '''
+    MRNet with ResNet architecture
+    @input: s x 3 x 256 x 256
+    @output: 1 x 2
+    '''
+    def __init__(self):
+        super().__init__()
+        self.pretrained_model = models.resnet18(pretrained=True)
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.dropout = nn.Dropout2d(p=0.5)
+        self.classifier = nn.Linear(256, 2)
+    
+    def forward(self, x):
+        x = torch.squeeze(x, dim=0) 
+        features = self.pretrained_model.features(x)
+        pooled_features = self.pooling_layer(features)
+        pooled_features = pooled_features.view(pooled_features.size(0), -1)
+        flattened_features = torch.max(pooled_features, 0, keepdim=True)[0]
+        output = self.classifier(flattened_features)
+        return output
+    
     
 class MRNetScratch(nn.Module):
     '''
@@ -74,47 +147,3 @@ class TDNet(nn.Module):
         return output
     
        
-class MRNetBN(nn.Module):
-    '''
-    MRNet with batch normalization
-    @input: s x 3 x 256 x 256
-    @output: 1 x 2
-    '''
-    def __init__(self):
-        super().__init__()
-        self.pretrained_model = models.alexnet(pretrained=True)
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout2d(p=0.5)
-        self.classifier = nn.Linear(256, 2)
-    
-    def forward(self, x):
-        x = torch.squeeze(x, dim=0) 
-        features = self.pretrained_model.features(x)
-        pooled_features = self.pooling_layer(features)
-        pooled_features = pooled_features.view(pooled_features.size(0), -1)
-        flattened_features = torch.max(pooled_features, 0, keepdim=True)[0]
-        output = self.classifier(flattened_features)
-        return output
-       
-        
-class MRResNet(nn.Module):
-    '''
-    MRNet with ResNet architecture
-    @input: s x 3 x 256 x 256
-    @output: 1 x 2
-    '''
-    def __init__(self):
-        super().__init__()
-        self.pretrained_model = models.resnet18(pretrained=True)
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout2d(p=0.5)
-        self.classifier = nn.Linear(256, 2)
-    
-    def forward(self, x):
-        x = torch.squeeze(x, dim=0) 
-        features = self.pretrained_model.features(x)
-        pooled_features = self.pooling_layer(features)
-        pooled_features = pooled_features.view(pooled_features.size(0), -1)
-        flattened_features = torch.max(pooled_features, 0, keepdim=True)[0]
-        output = self.classifier(flattened_features)
-        return output
