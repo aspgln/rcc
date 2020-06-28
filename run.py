@@ -42,11 +42,8 @@ import src.model
 
 
 def run(args):
-    device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
-    print('Cuda available:', torch.cuda.is_available(), f'device = {device}')
 
-    
-    
+    ### Data Loading 
     
     if args.task == 0:
         print('Task 0: MR Dataset Prediction')
@@ -77,12 +74,12 @@ def run(args):
             transforms.Lambda(lambda x: torch.Tensor(x)),
             src.dataloader.Rescale(-160, 240), # rset dynamic range
             transforms.Lambda(lambda x: x.repeat(3, 1, 1, 1).permute(3, 0, 1, 2)),
-    #         src.dataloader.Normalize(),
-            src.dataloader.Crop(90),
-    #         src.dataloader.RandomCenterCrop(90),
+#             src.dataloader.Normalize(),
+#             src.dataloader.Crop(90),
+#             src.dataloader.RandomCenterCrop(90),
 
-    #         src.dataloader.RandomHorizontalFlip(),
-    #         src.dataloader.RandomRotate(25),
+            src.dataloader.RandomHorizontalFlip(),
+            src.dataloader.RandomRotate(25),
             src.dataloader.Resize(256),
         ])
 
@@ -106,34 +103,61 @@ def run(args):
         pos_weight = args.weight
 
 
-
+    ### Some Checkers
     print('Summary: ')
+
     print(f'\ttrain size: {len(train_loader)}')
     print(f'\tval size: {len(val_loader)}')
     print('\tDatatype = ', train_ds[1][0].dtype)
     print('\tMin = ', train_ds[1][0].min())
     print('\tMax = ', train_ds[1][0].max())
     print('\tInput size', train_ds[0][0].shape)
+    print('\tweight = ', args.weight)
 
 
+    
+    
+    ### Some trackers 
     log_root_folder = "/data/larson2/RCC_dl/logs/"
-#         if args.flush_history == 1:
-#         objects = os.listdir(log_root_folder)
-#         for f in objects:
-#             if os.path.isdir(log_root_folder + f):
-#                 shutil.rmtree(log_root_folder + f)
-
 
     now = datetime.now()
     now = now.strftime("%Y%m%d-%H%M%S")
-    logdir = os.path.join(log_root_folder , f"task_{args.task}_{args.prefix_name}_{now}")
+    logdir = os.path.join(log_root_folder , f"task_{args.task}_{args.prefix_name}_model{args.model}_{now}")
     os.makedirs(logdir)
     print(f'logdir = {logdir}')
     
     writer = SummaryWriter(logdir)
 
-    model = src.model.MRNet()
-    model = model.to(device)
+    
+    
+    ### Model Construction
+    
+    ## Select Model    
+    if args.model == 1:
+        model = src.model.MRNet()
+    elif args.model == 2:
+        model = src.model.MRNet2()
+    elif args.model == 3:
+        model = src.model.MRNetBN()    
+    elif args.model == 4:
+        model = src.model.MRResNet()
+    elif args.model == 5:
+        model = src.model.MRNetScratch()
+    elif args.model == 6:
+        model = src.model.TDNet()
+    else:
+        print('Invalid model name')
+        return
+    
+    ## Weight Initialization
+    
+    
+    ## Training Stretegy
+    device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
+    print('\tCuda:', torch.cuda.is_available(), f'\n\tdevice = {device}')
+        
+        
+
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.1)
 
@@ -143,27 +167,26 @@ def run(args):
     elif args.lr_scheduler == "step":
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=3, gamma=args.gamma)
-        
-        
+
+    model = model.to(device)
+    
+
+    ### Ready?
     best_val_loss = float('inf')
     best_val_auc = float(0)
-
-    num_epochs = args.epochs
     iteration_change_loss = 0
-    patience = args.patience
-    log_every = args.log_every
     t_start_training = time.time()
-    weight = args.weight
-    print('weight = ', weight)
-    for epoch in range(num_epochs):
+    
+    ### Here we go
+    for epoch in range(args.epochs):
         current_lr = src.train3d.get_lr(optimizer)
 
         t_start = time.time()
 
         train_loss, train_auc = src.train3d.train_model(
-            model, train_loader, device, epoch, num_epochs, optimizer, writer, current_lr, log_every, weight)
+            model, train_loader, device, epoch, args.epochs, optimizer, writer, current_lr, args.log_every, args.weight)
         val_loss, val_auc = src.train3d.evaluate_model(
-            model, val_loader, device, epoch, num_epochs, writer, current_lr,log_every,  weight)
+            model, val_loader, device, epoch, args.epochs, writer, current_lr,args.log_every,)
 
         if args.lr_scheduler == 'plateau':
             scheduler.step(val_loss)
@@ -182,35 +205,22 @@ def run(args):
         model_root_dir = "/data/larson2/RCC_dl/models/"
 
 
-        if val_auc > best_val_auc and epoch > 5:
+        if val_auc > best_val_auc:
             best_val_auc = val_auc
             if bool(args.save_model):
-                file_name = f'model_{args.task}_{args.prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}_lr_{args.lr}_gamma_{args.gamma}_lrsche_{args.lr_scheduler}_weight_{args.weight}.pth'
-                for f in os.listdir(model_root_dir):
-                    if  (args.prefix_name in f):
-                        os.remove(os.path.join(model_root_dir, f))
+                file_name = f'task_{args.task}_model_{args.model}_{args.prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}_weight_{args.weight}_lr_{args.lr}_gamma_{args.gamma}_lrsche_{args.lr_scheduler}.pth'
+#                 for f in os.listdir(model_root_dir):
+#                     if  (args.prefix_name in f):
+#                         os.remove(os.path.join(model_root_dir, f))
                 torch.save(model, os.path.join(model_root_dir, file_name))
 
-
-    
-#         if val_auc > best_val_auc:
-#                 best_val_auc = val_auc
-#                 if bool(save_model):
-#                     file_name = f'model_{prefix_name}_val_auc_{val_auc:0.4f}_train_auc_{train_auc:0.4f}_epoch_{epoch+1}.pth'
-#                     for f in os.listdir(model_root_dir):
-#                         if  (prefix_name in f):
-#                             os.remove(os.path.join(model_root_dir, f))
-#                     torch.save(model, os.path.join(model_root_dir, file_name))
-
-
-    
     
     
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             iteration_change_loss = 0
 
-        if iteration_change_loss == patience:
+        if iteration_change_loss == args.patience:
             print('Early stopping after {0} iterations without the decrease of the val loss'.
                   format(iteration_change_loss))
             break
@@ -222,26 +232,14 @@ def run(args):
 
 
 
-#     task='abnormal'
-#     plane='sagittal'
-#     augment=1
-#     lr_scheduler='plateau'
-#     gamma=0.5
-#     epochs=20
-#     lr=1e-5
-#     flush_history=0
-#     save_model=1
-#     patience=5
-#     log_every=100
-#     prefix_name='test'
-
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, default=None)
     parser.add_argument('--prefix_name', type=str, required=True)
     parser.add_argument('--task', type=int, required=True) # 0->mrnet, 1->clear cell
+    parser.add_argument('--model', type=int, required=True)
+
 
 #     parser.add_argument('--augment', type=int, choices=[0, 1], default=1)
     parser.add_argument('--lr_scheduler', type=str,
@@ -254,6 +252,7 @@ def parse_arguments():
     parser.add_argument('--patience', type=int, default=5)
     parser.add_argument('--log_every', type=int, default=25)
     parser.add_argument('--weight', type=float, default=1)
+
 
     args = parser.parse_args()
     return args
