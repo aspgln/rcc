@@ -25,56 +25,45 @@ from sklearn.metrics import confusion_matrix
 
 def train_model(model, train_loader, device, epoch, num_epochs, optimizer, writer, current_lr, log_every=100, weight = 1):
     _ = model.train()
-    print('in train, weight = ', weight)
-#     if torch.cuda.is_available():
-#         model.cuda()
-    model = model.to(device)
     
-    y_preds = []
+    model = model.to(device)
     y_trues = []
-    losses = []
-    y_argmax = []
+    y_logits = []
+    y_probs = []
+    y_preds = []
+    loss_values = []
+    
+    pos_weight = torch.FloatTensor([weight]).to(device)
+    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
 
 
     for i, (image, label, header) in enumerate(train_loader):
-#         print('index = ', i)
         optimizer.zero_grad()
     
         image = image.to(device)
         label = label.to(device)
-#         weight = weight.to(device)
 
-
-        label = label[0]
-#         weight = weight[0]
-
-        prediction = model.forward(image.float())
-#         loss = torch.nn.BCEWithLogitsLoss(weight=weight)(prediction, label)
-        pos_weight = torch.FloatTensor([weight]).to(device)
-        loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)(prediction, label)
-#         loss = torch.nn.CrossEntropyLoss(weight=weight)(prediction, label)
-
-
-
+        outputs = model(image.float())
+        loss = criterion(outputs, label)
         loss.backward()
         optimizer.step()
-
-        loss_value = loss.item()
-        losses.append(loss_value)
-
-        probas = torch.sigmoid(prediction)
-
-        y_trues.append(int(label[0][1]))
-        y_preds.append(probas[0][1].item())
-        y_argmax.append(torch.argmax(probas).item())
-
+        
+        probs = torch.sigmoid(outputs)
+        preds = torch.round(probs)
+        
+        loss_values.append(loss.item())
+        y_trues.append(int(label.item()))
+        y_logits.append(outputs.item())
+        y_probs.append(probs.item())
+        y_preds.append(preds.item())
 
         try:
-            auc = metrics.roc_auc_score(y_trues, y_preds)
+            auc = metrics.roc_auc_score(y_trues, y_probs)
         except:
             auc = 0.5
 
-        writer.add_scalar('Train/Loss', loss_value,
+        writer.add_scalar('Train/Loss', loss.item(),
                           epoch * len(train_loader) + i)
         writer.add_scalar('Train/AUC', auc, epoch * len(train_loader) + i)
 
@@ -85,15 +74,15 @@ def train_model(model, train_loader, device, epoch, num_epochs, optimizer, write
                       num_epochs,
                       i,
                       len(train_loader),
-                      np.round(np.mean(losses), 4),
+                      np.round(np.mean(loss_values), 4),
                       np.round(auc, 4),
                       current_lr
                   )
                   )
             
-    cm = confusion_matrix(y_trues, y_argmax, labels=[0, 1])
+    cm = confusion_matrix(y_trues, y_preds, labels=[0, 1])
     print_cm(cm, ['0', '1'])
-    sens, spec, acc = computet_stats(y_argmax, y_trues)
+    sens, spec, acc = compute_stats(y_trues, y_preds )
     print('sens: {:.4f}'.format(sens))
     print('spec: {:.4f}'.format(spec))
     print('acc:  {:.4f}'.format(acc))
@@ -102,56 +91,47 @@ def train_model(model, train_loader, device, epoch, num_epochs, optimizer, write
 
     writer.add_scalar('Train/AUC_epoch', auc, epoch + i)
 
-    train_loss_epoch = np.round(np.mean(losses), 4)
+    train_loss_epoch = np.round(np.mean(loss_values), 4)
     train_auc_epoch = np.round(auc, 4)
     return train_loss_epoch, train_auc_epoch
 
 
-def evaluate_model(model, val_loader, device, epoch, num_epochs, writer, current_lr, log_every=20, weight=1):
+def evaluate_model(model, val_loader, device, epoch, num_epochs, writer, current_lr, log_every=20,):
     _ = model.eval()
 
     model = model.to(device)
-
     y_trues = []
+    y_logits = []
+    y_probs = []
     y_preds = []
-    y_argmax = []
-    losses = []
+    loss_values = []
+
+    criterion = torch.nn.BCEWithLogitsLoss()
 
     for i, (image, label, header) in enumerate(val_loader):
-
+    
         image = image.to(device)
         label = label.to(device)
-#         weight = weight.to(device)
 
+        outputs = model(image.float())
+        loss = criterion(outputs, label)
 
-        label = label[0]
-#         weight = weight[0]
-
-        prediction = model.forward(image.float())
-
-#         loss = torch.nn.BCEWithLogitsLoss(weight=weight)(prediction, label)
-        pos_weight = torch.FloatTensor([weight]).to(device)
-        loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)(prediction, label)
-#         loss = torch.nn.CrossEntropyLoss(weight=weight)(prediction, label)
-
-
-
-        loss_value = loss.item()
-        losses.append(loss_value)
-
-        probas = torch.sigmoid(prediction)
-
-        y_trues.append(int(label[0][1]))
-        y_preds.append(probas[0][1].item())
-        y_argmax.append(torch.argmax(probas).item())
-
+        
+        probs = torch.sigmoid(outputs)
+        preds = torch.round(probs)
+        
+        loss_values.append(loss.item())
+        y_trues.append(int(label.item()))
+        y_logits.append(outputs.item())
+        y_probs.append(probs.item())
+        y_preds.append(preds.item())
 
         try:
-            auc = metrics.roc_auc_score(y_trues, y_preds)
+            auc = metrics.roc_auc_score(y_trues, y_probs)
         except:
             auc = 0.5
 
-        writer.add_scalar('Val/Loss', loss_value, epoch * len(val_loader) + i)
+        writer.add_scalar('Val/Loss', loss.item(), epoch * len(val_loader) + i)
         writer.add_scalar('Val/AUC', auc, epoch * len(val_loader) + i)
 
         if (i % log_every == 0) & (i > 0):
@@ -161,15 +141,15 @@ def evaluate_model(model, val_loader, device, epoch, num_epochs, writer, current
                       num_epochs,
                       i,
                       len(val_loader),
-                      np.round(np.mean(losses), 4),
+                      np.round(np.mean(loss_values), 4),
                       np.round(auc, 4),
                       current_lr
                   )
                   )
 
-    cm = confusion_matrix(y_trues, y_argmax, labels=[0, 1])
+    cm = confusion_matrix(y_trues, y_preds, labels=[0, 1])
     print_cm(cm, ['0', '1'])
-    sens, spec, acc = computet_stats(y_argmax, y_trues)
+    sens, spec, acc = compute_stats(y_trues, y_preds)
     print('sens: {:.4f}'.format(sens))
     print('spec: {:.4f}'.format(spec))
     print('acc:  {:.4f}'.format(acc))
@@ -178,7 +158,7 @@ def evaluate_model(model, val_loader, device, epoch, num_epochs, writer, current
     
     writer.add_scalar('Val/AUC_epoch', auc, epoch + i)
 
-    val_loss_epoch = np.round(np.mean(losses), 4)
+    val_loss_epoch = np.round(np.mean(loss_values), 4)
     val_auc_epoch = np.round(auc, 4)
     return val_loss_epoch, val_auc_epoch
 
@@ -186,8 +166,7 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
     
-    
-def computet_stats(pred_list, label_list):
+def compute_stats(label_list, pred_list):
     tp_idx = []
     fp_idx = []
     fn_idx = []
