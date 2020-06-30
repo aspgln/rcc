@@ -61,19 +61,34 @@ class RCCDataset_h5(Dataset):
     
     def __getitem__(self,index):
         with h5py.File(self.paths[index], mode='r', track_order=True) as f:
-            print(self.paths[index])
+            # get label
+            label = self.labels[index]
+            if label == 1:
+                label = torch.FloatTensor([1])
+            elif label == 0:
+                label = torch.FloatTensor([0])
+                       
+#             # get label, for BCELogitLoss
+#             label = self.labels[index]
+#             if label == 1:
+#                 label = torch.FloatTensor([[0, 1]])
+#             elif label == 0:
+#                 label = torch.FloatTensor([[1, 0]])
+            
+            # get image array
             group = f['single_phase']
             array = group['data'][()]
             
-            label = self.labels[index]
-            if label == 1:
-                label = torch.FloatTensor([[0, 1]])
-            elif label == 0:
-                label = torch.FloatTensor([[1, 0]])
-
-            return (array, label)
-
-
+            # convert to tensor
+            array = torch.Tensor(array)
+            if self.transform:
+                array = self.transform(array)
+            
+            # header
+            header = {}
+            return (array, label, header)
+        
+        
 class RCCDataset(Dataset):
     """RCC Dataset"""
     
@@ -253,18 +268,24 @@ class RCCDataset3DTest(Dataset):
 
         
 class Rescale(object):
-    def __init__(self, vmin, vmax):
+    def __init__(self, vmin, vmax,zero_center=False, normalize=False):
         self.vmin = vmin
         self.vmax = vmax
-        
+        self.zero_center = zero_center
+        self.normalize = normalize
+
+
     def __call__(self, array):
-      
 #         Rescale from [-1024, 3071] to [-vmin. vmax]
 
 #         option 1: to [-160, 240]
         array[array<self.vmin] = self.vmin
         array[array>self.vmax] = self.vmax
         
+        if self.zero_center == True:
+            array = array - (self.vmax + self.vmin)/2
+#         if self.normalize == True:
+#             array = 
 #         # option 2: zero-centered
 #         array[array<self.vmin] = self.vmin
 #         array[array>self.vmax] = self.vmax
@@ -305,9 +326,6 @@ class Normalize(object):
 
         return array_tsfm
 
-   
-    
-    
     
 class Resize(object):
     def __init__(self, size):
